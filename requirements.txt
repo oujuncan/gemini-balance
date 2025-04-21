@@ -19,3 +19,4 @@ python-dotenv
 apscheduler # 添加定时任务库
 
 packaging
+boto3 # 添加AWS S3 SDK支持

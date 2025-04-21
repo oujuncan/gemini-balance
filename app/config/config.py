@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     PICGO_API_KEY: str = ""
     CLOUDFLARE_IMGBED_URL: str = ""
     CLOUDFLARE_IMGBED_AUTH_CODE: str = ""
+    # S3对象存储配置
+    S3_ACCESS_KEY: str = ""
+    S3_SECRET_KEY: str = ""
+    S3_BUCKET_NAME: str = ""
+    S3_REGION: str = "us-east-1"
+    S3_ENDPOINT_URL: str = ""  # MinIO或其他S3兼容存储的终端节点URL
+    S3_PREFIX: str = ""        # 文件路径前缀，例如 "uploads/"
+    S3_CUSTOM_DOMAIN: str = "" # 自定义域名，用于生成访问URL
     
     # 流式输出优化器配置
     STREAM_OPTIMIZER_ENABLED: bool = False

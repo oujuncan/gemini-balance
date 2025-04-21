@@ -371,6 +371,149 @@ class CloudFlareImgBedUploader(ImageUploader):
                 error_type=UploadErrorType.UNKNOWN,
                 original_error=e
             )
+
+
+class S3Uploader(ImageUploader):
+    """S3对象存储上传器，同时兼容Amazon S3和MinIO"""
+    
+    def __init__(
+        self, 
+        access_key: str, 
+        secret_key: str, 
+        bucket_name: str, 
+        region: str = "us-east-1", 
+        endpoint_url: str = None,
+        prefix: str = "",
+        custom_domain: str = None
+    ):
+        """
+        初始化S3对象存储上传器
+        
+        Args:
+            access_key: 访问密钥ID
+            secret_key: 秘密访问密钥
+            bucket_name: 存储桶名称
+            region: 区域名称，默认为us-east-1
+            endpoint_url: 终端节点URL，使用MinIO或其他S3兼容存储时必须提供
+            prefix: 文件路径前缀，可选
+            custom_domain: 自定义域名，用于生成URL时替换默认域名
+        """
+        import boto3
+        
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.bucket_name = bucket_name
+        self.region = region
+        self.endpoint_url = endpoint_url
+        self.prefix = prefix
+        self.custom_domain = custom_domain
+        
+        # 创建S3客户端
+        self.s3_client = boto3.client(
+            's3',
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=region,
+            endpoint_url=endpoint_url
+        )
+        
+    def upload(self, file: bytes, filename: str) -> UploadResponse:
+        """
+        上传图片到S3对象存储
+        
+        Args:
+            file: 图片文件二进制数据
+            filename: 文件名
+            
+        Returns:
+            UploadResponse: 上传响应对象
+            
+        Raises:
+            UploadError: 上传失败时抛出异常
+        """
+        try:
+            import io
+            from botocore.exceptions import ClientError
+            
+            # 添加前缀到文件名
+            s3_key = f"{self.prefix}{filename}" if self.prefix else filename
+            
+            # 上传文件到S3
+            self.s3_client.upload_fileobj(
+                io.BytesIO(file),
+                self.bucket_name,
+                s3_key,
+                ExtraArgs={'ContentType': 'image/png'}
+            )
+            
+            # 构建URL
+            if self.custom_domain:
+                # 使用自定义域名
+                url = f"{self.custom_domain.rstrip('/')}/{s3_key}"
+            elif self.endpoint_url:
+                # 对于MinIO或自定义S3兼容存储
+                url = f"{self.endpoint_url.rstrip('/')}/{self.bucket_name}/{s3_key}"
+            else:
+                # 对于AWS S3
+                url = f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{s3_key}"
+            
+            # 构建图片元数据
+            image_metadata = ImageMetadata(
+                width=0,  # S3不提供图片尺寸信息
+                height=0,  # S3不提供图片尺寸信息
+                filename=filename,
+                size=len(file),
+                url=url,
+                delete_url=None  # S3不提供直接删除URL
+            )
+            
+            return UploadResponse(
+                success=True,
+                code="success",
+                message="Upload success",
+                data=image_metadata
+            )
+            
+        except ClientError as e:
+            # 处理AWS S3特定错误
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            
+            if error_code == 'InvalidAccessKeyId' or error_code == 'SignatureDoesNotMatch':
+                raise UploadError(
+                    message=f"S3 authentication failed: {error_message}",
+                    error_type=UploadErrorType.AUTH_ERROR,
+                    original_error=e
+                )
+            elif error_code == 'NoSuchBucket':
+                raise UploadError(
+                    message=f"S3 bucket not found: {error_message}",
+                    error_type=UploadErrorType.SERVER_ERROR,
+                    original_error=e
+                )
+            else:
+                raise UploadError(
+                    message=f"S3 error ({error_code}): {error_message}",
+                    error_type=UploadErrorType.SERVER_ERROR,
+                    original_error=e
+                )
+                
+        except ImportError as e:
+            raise UploadError(
+                message=f"Missing required dependency: {str(e)}. Please install boto3 package.",
+                error_type=UploadErrorType.UNKNOWN,
+                original_error=e
+            )
+        except UploadError:
+            # 重新抛出已经是 UploadError 类型的异常
+            raise
+        except Exception as e:
+            # 处理其他未预期的错误
+            raise UploadError(
+                message=f"S3 upload failed: {str(e)}",
+                error_type=UploadErrorType.UNKNOWN,
+                original_error=e
+            )
     
 class ImageUploaderFactory:
     @staticmethod
@@ -389,5 +532,15 @@ class ImageUploaderFactory:
             return CloudFlareImgBedUploader(
                 credentials["auth_code"],
                 credentials["base_url"]
+            )
+        elif provider == "s3":
+            return S3Uploader(
+                credentials["access_key"],
+                credentials["secret_key"],
+                credentials["bucket_name"],
+                credentials.get("region"),
+                credentials.get("endpoint_url"),
+                credentials.get("prefix"),
+                credentials.get("custom_domain")
             )
         raise ValueError(f"Unknown provider: {provider}")

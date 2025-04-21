@@ -1,4 +1,3 @@
-
 import base64
 import json
 import random
@@ -201,6 +200,17 @@ def _extract_image_data(part: dict) -> str:
         image_uploader = ImageUploaderFactory.create(provider=settings.UPLOAD_PROVIDER,api_key=settings.PICGO_API_KEY)
     elif settings.UPLOAD_PROVIDER == "cloudflare_imgbed":
         image_uploader = ImageUploaderFactory.create(provider=settings.UPLOAD_PROVIDER,base_url=settings.CLOUDFLARE_IMGBED_URL,auth_code=settings.CLOUDFLARE_IMGBED_AUTH_CODE)
+    elif settings.UPLOAD_PROVIDER == "s3":
+        image_uploader = ImageUploaderFactory.create(
+            provider=settings.UPLOAD_PROVIDER,
+            access_key=settings.S3_ACCESS_KEY,
+            secret_key=settings.S3_SECRET_KEY,
+            bucket_name=settings.S3_BUCKET_NAME,
+            region=settings.S3_REGION,
+            endpoint_url=settings.S3_ENDPOINT_URL,
+            prefix=settings.S3_PREFIX,
+            custom_domain=settings.S3_CUSTOM_DOMAIN
+        )
     current_date = time.strftime("%Y/%m/%d")
     filename = f"{current_date}/{uuid.uuid4().hex[:8]}.png"
     base64_data = part["inlineData"]["data"]
